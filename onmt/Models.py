@@ -98,7 +98,7 @@ class RNNEncoder(EncoderBase):
 
         num_directions = 2 if bidirectional else 1
         assert hidden_size % num_directions == 0
-        hidden_size = hidden_size // num_directions
+        # hidden_size = hidden_size // num_directions
         self.embeddings = embeddings
         self.no_pack_padded_seq = False
 
@@ -206,6 +206,10 @@ class RNNDecoderBase(nn.Module):
         self.rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
                                    num_layers, dropout)
 
+        # Transfer of encoder hid size to decoder size, 2*hid -> hid
+        self.mlp = nn.Linear(hidden_size*2, hidden_size)
+        self.context_mlp = nn.Linear(hidden_size*2, hidden_size)
+
         # Set up the context gate.
         self.context_gate = None
         if context_gate is not None:
@@ -258,6 +262,7 @@ class RNNDecoderBase(nn.Module):
         # END Args Check
 
         # Run the forward pass of the RNN.
+        context = self.context_mlp(context)
         hidden, outputs, attns, coverage = self._run_forward_pass(
             input, context, state, context_lengths=context_lengths)
 
@@ -281,6 +286,7 @@ class RNNDecoderBase(nn.Module):
         """
         if self.bidirectional_encoder:
             h = torch.cat([h[0:h.size(0):2], h[1:h.size(0):2]], 2)
+            h = self.mlp(h)
         return h
 
     def init_decoder_state(self, src, context, enc_hidden):
