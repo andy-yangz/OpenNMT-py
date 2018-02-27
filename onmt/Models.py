@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
-
+import numpy as np
 import onmt
 from onmt.Utils import aeq
 
@@ -404,6 +404,91 @@ class StdRNNDecoder(RNNDecoderBase):
         """
         return self.embeddings.embedding_size
 
+
+class MLPBiRNNDecoder(RNNDecoderBase):
+    """
+    MLP connect the Forward and backward path
+    """
+    def __init__(self, rnn_type, bidirectional_encoder, num_layers,
+                 hidden_size, attn_type="general",
+                 coverage_attn=False, context_gate=None,
+                 copy_attn=False, dropout=0.0, embeddings=None,
+                 reuse_copy_attn=False):
+        super(MLPBiRNNDecoder, self).__init__(rnn_type, bidirectional_encoder, num_layers,
+                                        hidden_size, attn_type,
+                                        coverage_attn, context_gate,
+                                        copy_attn, dropout, embeddings,
+                                        reuse_copy_attn)
+        self.bk_rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
+                            num_layers, dropout)
+        self.affine = nn.Linear(hidden_size, hidden_size)
+        self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
+        
+    def _run_forward_pass(self, input, context, state, context_lengths=None):
+        outputs = []
+        attns = {"std": []}
+        coverage = None
+        
+        emb = self.embeddings(input)
+
+        # Run the forward pass of the RNN.
+        if isinstance(self.rnn, nn.GRU):
+            fd_rnn_output, hidden = self.rnn(emb, state.hidden[0])
+            if self.training:
+                bk_rnn_output = self._run_backward_pass(emb, state.hidden[0])
+        else:
+            fd_rnn_output, hidden = self.rnn(emb, state.hidden)
+            if self.training:
+                bk_rnn_output = self._run_backward_pass(emb, state.hidden)
+        
+        pred_bk_rnn_output = self.affine(fd_rnn_output)
+
+        rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, pred_bk_rnn_output, 2)))
+        # Calculate the attention.
+        attn_outputs, attn_scores = self.attn(
+            rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
+            context.transpose(0, 1),                  # (contxt_len, batch, d)
+            context_lengths=context_lengths
+        )
+        attns["std"] = attn_scores
+
+        outputs = self.dropout(attn_outputs)    # (input_len, batch, d)
+
+        # Return result.
+        return hidden, outputs, attns, coverage
+
+    def _run_backward_pass(self, input, hidden):
+        idx = np.arange(input.size(0))[::-1].tolist()
+        idx = Variable(torch.LongTensor(idx)).cuda()
+        
+        bwd_input = input.index_select(0, idx)
+        output, hidden = self.bk_rnn(bwd_input, hidden)
+        output = outputs.index_select(0, idx)
+        return output, hidden
+
+    def _build_rnn(self, rnn_type, input_size,
+                   hidden_size, num_layers, dropout):
+        """
+        Private helper for building standard decoder RNN.
+        """
+        # Use pytorch version when available.
+        if rnn_type == "SRU":
+            return onmt.modules.SRU(
+                    input_size, hidden_size,
+                    num_layers=num_layers,
+                    dropout=dropout)
+
+        return getattr(nn, rnn_type)(
+            input_size, hidden_size,
+            num_layers=num_layers,
+            dropout=dropout)
+            
+    @property
+    def _input_size(self):
+        """
+        Private helper returning the number of expected features.
+        """
+        return self.embeddings.embedding_size
 
 class InputFeedRNNDecoder(RNNDecoderBase):
     """
