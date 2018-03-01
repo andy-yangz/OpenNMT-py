@@ -36,10 +36,14 @@ class Statistics(object):
         self.n_src_words = 0
         self.start_time = time.time()
 
+        self.l2_loss = 0
     def update(self, stat):
         self.loss += stat.loss
         self.n_words += stat.n_words
         self.n_correct += stat.n_correct
+
+    def update_l2_loss(self, loss):
+        self.l2_loss += loss
 
     def accuracy(self):
         return 100 * (self.n_correct / self.n_words)
@@ -60,11 +64,12 @@ class Statistics(object):
            start (int): start time of epoch.
         """
         t = self.elapsed_time()
-        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; " +
+        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; l2_l: %6.2f;" +
                "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
               (epoch, batch,  n_batches,
                self.accuracy(),
                self.ppl(),
+               self.l2_loss,
                self.n_src_words / (t + 1e-5),
                self.n_words / (t + 1e-5),
                time.time() - start))
@@ -110,7 +115,7 @@ class Trainer(object):
 
     def __init__(self, model, train_loss, valid_loss, optim,
                  trunc_size=0, shard_size=32, data_type='text',
-                 norm_method="sents", grad_accum_count=1):
+                 norm_method="sents", grad_accum_count=1, tgt_vocab=None):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -121,6 +126,7 @@ class Trainer(object):
         self.data_type = data_type
         self.norm_method = norm_method
         self.grad_accum_count = grad_accum_count
+        self.padding_idx = tgt_vocab.stoi[onmt.io.DatasetBase.PAD_WORD]
 
         assert(grad_accum_count > 0)
         if grad_accum_count > 1:
@@ -292,7 +298,7 @@ class Trainer(object):
             for j in range(0, target_size-1, trunc_size):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
-
+                weight = (tgt[:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
@@ -300,6 +306,7 @@ class Trainer(object):
                     self.model(src, tgt, src_lengths, dec_state)
 
                 # 3. Compute loss in shards for memory efficiency.
+                self.model.decoder.l2_loss(weight, report_stats)
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
                         trunc_size, self.shard_size, normalization)

@@ -215,7 +215,8 @@ def train_model(model, fields, optim, data_type, model_opt):
 
     trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
                            trunc_size, shard_size, data_type,
-                           norm_method, grad_accum_count)
+                           norm_method, grad_accum_count,
+                           fields["tgt"].vocab)
 
     print('\nStart training...')
     print(' * number of epochs: %d, starting from Epoch %d' %
@@ -337,10 +338,10 @@ def collect_report_features(fields):
         print(' * tgt feature %d size = %d' % (j, len(fields[feat].vocab)))
 
 
-def build_model(model_opt, opt, fields, checkpoint):
+def build_model(model_opt, opt, fields, checkpoint, back_model):
     print('Building model...')
     model = onmt.ModelConstructor.make_base_model(model_opt, fields,
-                                                  use_gpu(opt), checkpoint)
+                                                  use_gpu(opt), checkpoint, back_model)
     if len(opt.gpuid) > 1:
         print('Multi gpu training: ', opt.gpuid)
         model = nn.DataParallel(model, device_ids=opt.gpuid, dim=1)
@@ -385,6 +386,11 @@ def main():
     else:
         checkpoint = None
         model_opt = opt
+    back_model=None
+    if opt.bkrnn_path:
+        print('Load Backward RNN model...')
+        back_model = torch.load(opt.bkrnn_path,
+                                map_location=lambda storage, loc: storage)
 
     # Peek the fisrt dataset to determine the data_type.
     # (All datasets have the same data_type).
@@ -398,7 +404,7 @@ def main():
     collect_report_features(fields)
 
     # Build model.
-    model = build_model(model_opt, opt, fields, checkpoint)
+    model = build_model(model_opt, opt, fields, checkpoint, back_model)
     tally_parameters(model)
     check_save_model_path()
 

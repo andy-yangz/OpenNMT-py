@@ -434,16 +434,19 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         # Run the forward pass of the RNN.
         if isinstance(self.rnn, nn.GRU):
             fd_rnn_output, hidden = self.rnn(emb, state.hidden[0])
+            pred_bk_rnn_output = self.affine(fd_rnn_output)
             if self.training:
-                bk_rnn_output = self._run_backward_pass(emb, state.hidden[0])
+                self.bk_rnn_output, _ = self._run_backward_pass(emb, state.hidden[0])
+                self.pred_bk_rnn_output = pred_bk_rnn_output
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
+            pred_bk_rnn_output = self.affine(fd_rnn_output)
             if self.training:
-                bk_rnn_output = self._run_backward_pass(emb, state.hidden)
-        
-        pred_bk_rnn_output = self.affine(fd_rnn_output)
+                self.bk_rnn_output, _ = self._run_backward_pass(emb, state.hidden)
+                self.pred_bk_rnn_output = pred_bk_rnn_output                
+                # self.l2_loss(bk_rnn_output, pred_bk_rnn_output)
 
-        rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, pred_bk_rnn_output, 2)))
+        rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(
             rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
@@ -463,7 +466,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         
         bwd_input = input.index_select(0, idx)
         output, hidden = self.bk_rnn(bwd_input, hidden)
-        output = outputs.index_select(0, idx)
+        output = output.index_select(0, idx)
         return output, hidden
 
     def _build_rnn(self, rnn_type, input_size,
@@ -482,7 +485,14 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             input_size, hidden_size,
             num_layers=num_layers,
             dropout=dropout)
-            
+    
+    def l2_loss(self, weight, states):
+        loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[weight]
+        loss = torch.sum(loss)
+        loss.backward(retain_graph=True)
+        states.update_l2_loss(loss.cpu().data.numpy())
+        return loss
+
     @property
     def _input_size(self):
         """

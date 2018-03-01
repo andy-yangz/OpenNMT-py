@@ -10,7 +10,8 @@ import onmt.io
 import onmt.Models
 import onmt.modules
 from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, \
-                        StdRNNDecoder, InputFeedRNNDecoder
+                        StdRNNDecoder, InputFeedRNNDecoder, \
+                        MLPBiRNNDecoder
 from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
                          TransformerEncoder, TransformerDecoder, \
                          CNNEncoder, CNNDecoder, AudioEncoder
@@ -99,6 +100,16 @@ def make_decoder(opt, embeddings):
                                    opt.dropout,
                                    embeddings,
                                    opt.reuse_copy_attn)
+    elif opt.decoder_type == 'brnn':
+        return MLPBiRNNDecoder(opt.rnn_type, opt.brnn,
+                             opt.dec_layers, opt.rnn_size,
+                             opt.global_attention,
+                             opt.coverage_attn,
+                             opt.context_gate,
+                             opt.copy_attn,
+                             opt.dropout,
+                             embeddings,
+                             opt.reuse_copy_attn)
     else:
         return StdRNNDecoder(opt.rnn_type, opt.brnn,
                              opt.dec_layers, opt.rnn_size,
@@ -129,7 +140,7 @@ def load_test_model(opt, dummy_opt):
     return fields, model, model_opt
 
 
-def make_base_model(model_opt, fields, gpu, checkpoint=None):
+def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
     """
     Args:
         model_opt: the option loaded from checkpoint.
@@ -214,6 +225,16 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
             model.decoder.embeddings.load_pretrained_vectors(
                     model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
 
+    if back_model is not None:
+        print('Loading back model parameters...')
+        model_dict = model.state_dict()
+        for key in model_dict.keys():
+            if key.startswith('decoder.bk_rnn'):
+                for load_key in back_model['model'].keys():
+                    if key.split('.')[-1] == load_key.split('.')[-1] and load_key.startswith("decoder.rnn"):
+                        print('From pretrained %s load %s' % (load_key, key))
+                        model_dict.update({key: back_model['model'][load_key]})
+        model.load_state_dict(model_dict)
     # Add generator to model (this registers it as parameter of model).
     model.generator = generator
 

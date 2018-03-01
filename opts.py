@@ -56,7 +56,7 @@ def model_opts(parser):
                        are experimental. Options are
                        [rnn|brnn|mean|transformer|cnn].""")
     group.add_argument('-decoder_type', type=str, default='rnn',
-                       choices=['rnn', 'transformer', 'cnn'],
+                       choices=['rnn', 'transformer', 'cnn', 'brnn'],
                        help="""Type of decoder layer to use. Non-RNN layers
                        are experimental. Options are
                        [rnn|transformer|cnn].""")
@@ -235,6 +235,9 @@ def train_opts(parser):
     group.add_argument('-train_from', default='', type=str,
                        help="""If training from a checkpoint then this is the
                        path to the pretrained model's state_dict.""")
+    group.add_argument('-bkrnn_path', default='', type=str,
+                       help="""If want to load a pretrained backward rnn,
+                       then use this to point it.""")
 
     # Pretrained word vectors
     group.add_argument('-pre_word_vecs_enc',
