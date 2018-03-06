@@ -4,7 +4,7 @@ and creates each encoder and decoder accordingly.
 """
 import torch
 import torch.nn as nn
-
+from itertools import chain
 import onmt
 import onmt.io
 import onmt.Models
@@ -200,8 +200,12 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
         generator = nn.Sequential(
             nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)),
             nn.LogSoftmax())
+        bk_generator = nn.Sequential(
+            nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)),
+            nn.LogSoftmax())
         if model_opt.share_decoder_embeddings:
             generator[0].weight = decoder.embeddings.word_lut.weight
+            bk_generator[0].weight = decoder.embeddings.word_lut.weight
     else:
         generator = CopyGenerator(model_opt.rnn_size,
                                   fields["tgt"].vocab)
@@ -211,6 +215,21 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
         print('Loading model parameters.')
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
+        model.generator = generator
+        model.bk_generator = bk_generator
+        # Fix the trained parts
+        for param in model.parameters():
+            param.requires_grad = False
+        # train_params = chain(model.generator.parameters(),
+        #                      model.decoder.attn.parameters(),
+        #                      model.decoder.context_mlp.parameters(),
+        #                      model.decoder.affine.parameters())
+        for param in model.decoder.affine.parameters():
+            param.requires_grad = True
+        
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print(name)
     else:
         if model_opt.param_init != 0.0:
             print('Intializing model parameters.')
@@ -225,18 +244,17 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
             model.decoder.embeddings.load_pretrained_vectors(
                     model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
 
-    if back_model is not None:
-        print('Loading back model parameters...')
-        model_dict = model.state_dict()
-        for key in model_dict.keys():
-            if key.startswith('decoder.bk_rnn'):
-                for load_key in back_model['model'].keys():
-                    if key.split('.')[-1] == load_key.split('.')[-1] and load_key.startswith("decoder.rnn"):
-                        print('From pretrained %s load %s' % (load_key, key))
-                        model_dict.update({key: back_model['model'][load_key]})
-        model.load_state_dict(model_dict)
+    # if back_model is not None:
+    #     print('Loading back model parameters...')
+    #     model_dict = model.state_dict()
+    #     for key in model_dict.keys():
+    #         if key.startswith('decoder.bk_rnn'):
+    #             for load_key in back_model['model'].keys():
+    #                 if key.split('.')[-1] == load_key.split('.')[-1] and load_key.startswith("decoder.rnn"):
+    #                     print('From pretrained %s load %s' % (load_key, key))
+    #                     model_dict.update({key: back_model['model'][load_key]})
+    #     model.load_state_dict(model_dict)
     # Add generator to model (this registers it as parameter of model).
-    model.generator = generator
 
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:

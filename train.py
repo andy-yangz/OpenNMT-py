@@ -195,7 +195,7 @@ def make_loss_compute(model, tgt_vocab, opt):
             opt.copy_loss_by_seqlength)
     else:
         compute = onmt.Loss.NMTLossCompute(
-            model.generator, tgt_vocab,
+            model.generator, model.bk_generator, tgt_vocab,
             label_smoothing=opt.label_smoothing)
 
     if use_gpu(opt):
@@ -338,10 +338,10 @@ def collect_report_features(fields):
         print(' * tgt feature %d size = %d' % (j, len(fields[feat].vocab)))
 
 
-def build_model(model_opt, opt, fields, checkpoint, back_model):
+def build_model(model_opt, opt, fields, checkpoint):
     print('Building model...')
     model = onmt.ModelConstructor.make_base_model(model_opt, fields,
-                                                  use_gpu(opt), checkpoint, back_model)
+                                                  use_gpu(opt), checkpoint)
     if len(opt.gpuid) > 1:
         print('Multi gpu training: ', opt.gpuid)
         model = nn.DataParallel(model, device_ids=opt.gpuid, dim=1)
@@ -386,11 +386,7 @@ def main():
     else:
         checkpoint = None
         model_opt = opt
-    back_model=None
-    if opt.bkrnn_path:
-        print('Load Backward RNN model...')
-        back_model = torch.load(opt.bkrnn_path,
-                                map_location=lambda storage, loc: storage)
+
 
     # Peek the fisrt dataset to determine the data_type.
     # (All datasets have the same data_type).
@@ -404,7 +400,7 @@ def main():
     collect_report_features(fields)
 
     # Build model.
-    model = build_model(model_opt, opt, fields, checkpoint, back_model)
+    model = build_model(model_opt, opt, fields, checkpoint)
     tally_parameters(model)
     check_save_model_path()
 

@@ -423,6 +423,45 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                             num_layers, dropout)
         self.affine = nn.Linear(hidden_size, hidden_size)
         self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
+
+        self.bk_attn = onmt.modules.GlobalAttention(
+            hidden_size, coverage=coverage_attn,
+            attn_type=attn_type
+        )
+
+    def forward(self, input, context, state, context_lengths=None, 
+                rev_input=None):
+        # Args Check
+        assert isinstance(state, RNNDecoderState)
+        input_len, input_batch, _ = input.size()
+        contxt_len, contxt_batch, _ = context.size()
+        aeq(input_batch, contxt_batch)
+        # END Args Check
+
+        # Run the forward pass of the RNN.
+        context = self.context_mlp(context)
+        if self.training:
+            bk_rnn_output, _ = self._run_backward_pass(
+                rev_input, context, state)
+            self.bk_rnn_output = bk_rnn_output.detach()
+
+        hidden, outputs, attns, coverage = self._run_forward_pass(
+            input, context, state, context_lengths=context_lengths)
+
+        # Update the state with the result.
+        final_output = outputs[-1]
+        state.update_state(hidden, final_output.unsqueeze(0),
+                           coverage.unsqueeze(0)
+                           if coverage is not None else None)
+
+        # Concatenates sequence of tensors along a new dimension.
+        outputs = torch.stack(outputs)
+        for k in attns:
+            attns[k] = torch.stack(attns[k])
+        if self.training:
+            return outputs, bk_rnn_output, state, attns
+        else:
+            return outputs, state, attns
         
     def _run_forward_pass(self, input, context, state, context_lengths=None):
         outputs = []
@@ -435,17 +474,11 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         if isinstance(self.rnn, nn.GRU):
             fd_rnn_output, hidden = self.rnn(emb, state.hidden[0])
             pred_bk_rnn_output = self.affine(fd_rnn_output)
-            if self.training:
-                self.bk_rnn_output, _ = self._run_backward_pass(emb, state.hidden[0])
-                self.pred_bk_rnn_output = pred_bk_rnn_output
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
             pred_bk_rnn_output = self.affine(fd_rnn_output)
-            if self.training:
-                self.bk_rnn_output, _ = self._run_backward_pass(emb, state.hidden)
-                self.pred_bk_rnn_output = pred_bk_rnn_output                
                 # self.l2_loss(bk_rnn_output, pred_bk_rnn_output)
-
+        self.pred_bk_rnn_output = pred_bk_rnn_output
         rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(
@@ -460,14 +493,17 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         # Return result.
         return hidden, outputs, attns, coverage
 
-    def _run_backward_pass(self, input, hidden):
-        idx = np.arange(input.size(0))[::-1].tolist()
-        idx = Variable(torch.LongTensor(idx)).cuda()
+    def _run_backward_pass(self, input, context, state):
+        emb = self.embeddings(input)
         
-        bwd_input = input.index_select(0, idx)
-        output, hidden = self.bk_rnn(bwd_input, hidden)
-        output = output.index_select(0, idx)
-        return output, hidden
+        rnn_output, hidden = self.bk_rnn(emb, state.hidden)
+
+        attn_outputs, attn_scores = self.bk_attn(
+            rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
+            context.transpose(0, 1)                 # (contxt_len, batch, d)
+        )                  
+        outputs = self.dropout(attn_outputs)
+        return outputs, hidden
 
     def _build_rnn(self, rnn_type, input_size,
                    hidden_size, num_layers, dropout):
@@ -628,7 +664,7 @@ class NMTModel(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, tgt, lengths, dec_state=None):
+    def forward(self, src, tgt, lengths, dec_state=None, rtgt=None):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
@@ -652,15 +688,23 @@ class NMTModel(nn.Module):
         tgt = tgt[:-1]  # exclude last target from inputs
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.decoder.init_decoder_state(src, context, enc_hidden)
-        out, dec_state, attns = self.decoder(tgt, context,
+        if self.training:
+            out, bk_out, dec_state, attns = self.decoder(tgt, context,
+                                             enc_state if dec_state is None
+                                             else dec_state,
+                                             context_lengths=lengths,
+                                             rev_input=rtgt[:-1] if rtgt is not None else None)
+            return out, bk_out, dec_state, attns
+        else:
+            out, dec_state, attns = self.decoder(tgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
                                              context_lengths=lengths)
-        if self.multigpu:
-            # Not yet supported on multi-gpu
-            dec_state = None
-            attns = None
-        return out, attns, dec_state
+            return out, dec_state, attns
+        # if self.multigpu:
+        #     # Not yet supported on multi-gpu
+        #     dec_state = None
+        #     attns = None
 
 
 class DecoderState(object):

@@ -14,7 +14,8 @@ import sys
 import math
 import torch
 import torch.nn as nn
-
+from torch.autograd import Variable
+import numpy as np
 import onmt
 import onmt.io
 import onmt.modules
@@ -149,6 +150,7 @@ class Trainer(object):
         """
         total_stats = Statistics()
         report_stats = Statistics()
+        back_report_stats = Statistics()
         idx = 0
         true_batchs = []
         accum = 0
@@ -177,13 +179,17 @@ class Trainer(object):
             if accum == self.grad_accum_count:
                 self._gradient_accumulation(
                         true_batchs, total_stats,
-                        report_stats, normalization)
+                        report_stats, back_report_stats, normalization)
 
                 if report_func is not None:
                     report_stats = report_func(
                             epoch, idx, num_batches,
                             total_stats.start_time, self.optim.lr,
                             report_stats)
+                    back_report_stats = report_func(
+                            epoch, idx, num_batches,
+                            total_stats.start_time, self.optim.lr,
+                            back_report_stats)
 
                 true_batchs = []
                 accum = 0
@@ -273,7 +279,7 @@ class Trainer(object):
                       valid_stats.ppl(), epoch))
 
     def _gradient_accumulation(self, true_batchs, total_stats,
-                               report_stats, normalization):
+                               report_stats, back_stats, normalization):
         if self.grad_accum_count > 1:
             self.model.zero_grad()
 
@@ -293,33 +299,45 @@ class Trainer(object):
             else:
                 src_lengths = None
 
+            idx = np.arange(batch.tgt.size(0))[::-1].tolist()
+            idx = Variable(torch.LongTensor(idx)).cuda()
+            batch.rtgt = batch.tgt.index_select(0, idx)
             tgt_outer = onmt.io.make_features(batch, 'tgt')
+            rtgt_outer = onmt.io.make_features(batch, 'rtgt')
 
             for j in range(0, target_size-1, trunc_size):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
+                rtgt = rtgt_outer[j: j + trunc_size]
                 weight = (tgt[:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
-                outputs, attns, dec_state = \
-                    self.model(src, tgt, src_lengths, dec_state)
+                outputs, bk_outputs, attns, dec_state = \
+                    self.model(src, tgt, src_lengths, dec_state, rtgt)
 
                 # 3. Compute loss in shards for memory efficiency.
                 self.model.decoder.l2_loss(weight, report_stats)
-                batch_stats = self.train_loss.sharded_compute_loss(
-                        batch, outputs, attns, j,
-                        trunc_size, self.shard_size, normalization)
+                # back_batch_stats = self.train_loss.sharded_compute_loss(
+                #         batch, bk_outputs, None, j,
+                #         trunc_size, self.shard_size, normalization, 
+                #         back=True)
+
+                # batch_stats = self.train_loss.sharded_compute_loss(
+                #         batch, outputs, attns, j,
+                #         trunc_size, self.shard_size, normalization)
 
                 # 4. Update the parameters and statistics.
                 if self.grad_accum_count == 1:
                     self.optim.step()
-                total_stats.update(batch_stats)
-                report_stats.update(batch_stats)
-
+                # total_stats.update(batch_stats)
+                # report_stats.update(batch_stats)
+                # back_stats.update(back_batch_stats)
+                report_stats.n_words = 1
+                back_stats.n_words = 1
                 # If truncated, don't backprop fully.
-                if dec_state is not None:
-                    dec_state.detach()
+                # if dec_state is not None:
+                #     dec_state.detach()
 
         if self.grad_accum_count > 1:
             self.optim.step()

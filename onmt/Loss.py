@@ -11,7 +11,7 @@ from torch.autograd import Variable
 
 import onmt
 import onmt.io
-
+import numpy as np
 
 class LossComputeBase(nn.Module):
     """
@@ -87,7 +87,7 @@ class LossComputeBase(nn.Module):
 
     def sharded_compute_loss(self, batch, output, attns,
                              cur_trunc, trunc_size, shard_size,
-                             normalization):
+                             normalization, back=False):
         """Compute the forward loss and backpropagate.  Computation is done
         with shards and optionally truncation for memory efficiency.
 
@@ -117,10 +117,10 @@ class LossComputeBase(nn.Module):
         """
         batch_stats = onmt.Statistics()
         range_ = (cur_trunc, cur_trunc + trunc_size)
-        shard_state = self._make_shard_state(batch, output, range_, attns)
+        shard_state = self._make_shard_state(batch, output, range_, attns, back)
 
         for shard in shards(shard_state, shard_size):
-            loss, stats = self._compute_loss(batch, **shard)
+            loss, stats = self._compute_loss(batch, **shard, back=back)
 
             loss.div(normalization).backward()
             batch_stats.update(stats)
@@ -155,7 +155,7 @@ class NMTLossCompute(LossComputeBase):
     """
     Standard NMT Loss Computation.
     """
-    def __init__(self, generator, tgt_vocab, normalization="sents",
+    def __init__(self, generator, bk_generator, tgt_vocab, normalization="sents",
                  label_smoothing=0.0):
         super(NMTLossCompute, self).__init__(generator, tgt_vocab)
         assert (label_smoothing >= 0.0 and label_smoothing <= 1.0)
@@ -177,15 +177,26 @@ class NMTLossCompute(LossComputeBase):
             weight[self.padding_idx] = 0
             self.criterion = nn.NLLLoss(weight, size_average=False)
         self.confidence = 1.0 - label_smoothing
+        self.bk_generator = bk_generator
 
-    def _make_shard_state(self, batch, output, range_, attns=None):
+    def _make_shard_state(self, batch, output, range_, attns=None, back=False):
+        if back:
+            return {
+            "output": output,
+            "target": batch.rtgt[range_[0] + 1: range_[1]]
+        }
         return {
             "output": output,
             "target": batch.tgt[range_[0] + 1: range_[1]],
         }
 
-    def _compute_loss(self, batch, output, target):
-        scores = self.generator(self._bottle(output))
+    def _compute_loss(self, batch, output, target, back=False):
+        if back:
+            # print('Back')
+            scores = self.bk_generator(self._bottle(output))
+        else:
+            # print('Normal')
+            scores = self.generator(self._bottle(output))
 
         gtruth = target.view(-1)
         if self.confidence < 1:
@@ -262,4 +273,4 @@ def shards(state, shard_size, eval=False):
         variables = ((state[k], v.grad.data) for k, v in non_none.items()
                      if isinstance(v, Variable) and v.grad is not None)
         inputs, grads = zip(*variables)
-        torch.autograd.backward(inputs, grads)
+        torch.autograd.backward(inputs, grads, retain_graph=True)

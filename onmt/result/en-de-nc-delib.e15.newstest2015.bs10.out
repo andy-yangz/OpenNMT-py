@@ -1,0 +1,30 @@
+MT evaluation scorer began on 2018 Feb 26 at 16:34:24
+
+command line:  /home/andy/tools/mosesdecoder/scripts/generic/mteval-v14.pl -r /home/andy/data/WMT/dev/newstest2015-ende-ref.de.sgm -s /home/andy/data/WMT/dev/newstest2015-ende-src.en.sgm -t tmp/en-de-nc-delib.e15.newstest2015.pred.de.sgm
+
+Evaluation of any-to-de translation using:
+    src set "newstest2015" (81 docs, 2169 segs)
+    ref set "newstest2015" (1 refs)
+    tst set "newstest2015" (1 systems)
+
+NIST score = 5.5352  BLEU score = 0.1606 for system "en-de-nc-delib.e15"
+
+# ------------------------------------------------------------------------
+
+Individual N-gram scoring
+        1-gram   2-gram   3-gram   4-gram   5-gram   6-gram   7-gram   8-gram   9-gram
+        ------   ------   ------   ------   ------   ------   ------   ------   ------
+ NIST:  4.3590   1.0023   0.1517   0.0203   0.0019   0.0005   0.0001   0.0000   0.0000   "en-de-nc-delib.e15"
+
+ BLEU:  0.5128   0.2262   0.1188   0.0651   0.0371   0.0215   0.0130   0.0080   0.0050   "en-de-nc-delib.e15"
+
+# ------------------------------------------------------------------------
+
+Cumulative N-gram scoring
+        1-gram   2-gram   3-gram   4-gram   5-gram   6-gram   7-gram   8-gram   9-gram
+        ------   ------   ------   ------   ------   ------   ------   ------   ------
+ NIST:  4.3590   5.3614   5.5130   5.5334   5.5352   5.5357   5.5359   5.5359   5.5359   "en-de-nc-delib.e15"
+
+ BLEU:  0.4758   0.3161   0.2225   0.1606   0.1180   0.0877   0.0661   0.0503   0.0386   "en-de-nc-delib.e15"
+
+MT evaluation scorer ended on 2018 Feb 26 at 16:34:31
