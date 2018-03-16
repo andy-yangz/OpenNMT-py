@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
+import torch.nn.functional as F
 import numpy as np
 import onmt
 from onmt.Utils import aeq
@@ -429,6 +430,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             attn_type=attn_type
         )
 
+        self.mse = nn.MSELoss(reduce=False)
+
     def forward(self, input, context, state, context_lengths=None, 
                 rev_input=None):
         # Args Check
@@ -444,6 +447,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             bk_rnn_output, _ = self._run_backward_pass(
                 rev_input, context, state)
             self.bk_rnn_output = bk_rnn_output.detach()
+            # self.bk_rnn_output = bk_rnn_output
 
         hidden, outputs, attns, coverage = self._run_forward_pass(
             input, context, state, context_lengths=context_lengths)
@@ -479,7 +483,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             pred_bk_rnn_output = self.affine(fd_rnn_output)
                 # self.l2_loss(bk_rnn_output, pred_bk_rnn_output)
         self.pred_bk_rnn_output = pred_bk_rnn_output
-        rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, pred_bk_rnn_output), 2))
+        rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(
             rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
@@ -522,9 +526,11 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             num_layers=num_layers,
             dropout=dropout)
     
-    def l2_loss(self, weight, states):
-        loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[weight]
-        loss = torch.sum(loss)
+    def l2_loss(self, mask, normalization, states):
+        # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[mask]
+        # loss = weight * torch.sum(loss)
+        loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
+        # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
         states.update_l2_loss(loss.cpu().data.numpy())
         return loss

@@ -309,7 +309,7 @@ class Trainer(object):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
                 rtgt = rtgt_outer[j: j + trunc_size]
-                weight = (tgt[:-1] != self.padding_idx)
+                mask = (tgt[:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
@@ -317,24 +317,24 @@ class Trainer(object):
                     self.model(src, tgt, src_lengths, dec_state, rtgt)
 
                 # 3. Compute loss in shards for memory efficiency.
-                self.model.decoder.l2_loss(weight, report_stats)
-                # back_batch_stats = self.train_loss.sharded_compute_loss(
-                #         batch, bk_outputs, None, j,
-                #         trunc_size, self.shard_size, normalization, 
-                #         back=True)
+                self.model.decoder.l2_loss(mask, normalization, report_stats)
+                back_batch_stats = self.train_loss.sharded_compute_loss(
+                        batch, bk_outputs, None, j,
+                        trunc_size, self.shard_size, normalization, 
+                        back=True)
 
-                # batch_stats = self.train_loss.sharded_compute_loss(
-                #         batch, outputs, attns, j,
-                #         trunc_size, self.shard_size, normalization)
+                batch_stats = self.train_loss.sharded_compute_loss(
+                        batch, outputs, attns, j,
+                        trunc_size, self.shard_size, normalization)
 
                 # 4. Update the parameters and statistics.
                 if self.grad_accum_count == 1:
                     self.optim.step()
-                # total_stats.update(batch_stats)
-                # report_stats.update(batch_stats)
-                # back_stats.update(back_batch_stats)
-                report_stats.n_words = 1
-                back_stats.n_words = 1
+                total_stats.update(batch_stats)
+                report_stats.update(batch_stats)
+                back_stats.update(back_batch_stats)
+                # report_stats.n_words = 1
+                # back_stats.n_words = 1
                 # If truncated, don't backprop fully.
                 # if dec_state is not None:
                 #     dec_state.detach()

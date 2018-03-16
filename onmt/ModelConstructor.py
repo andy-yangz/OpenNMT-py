@@ -215,8 +215,6 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
         print('Loading model parameters.')
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
-        model.generator = generator
-        model.bk_generator = bk_generator
         # Fix the trained parts
         for param in model.parameters():
             param.requires_grad = False
@@ -255,7 +253,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
     #                     model_dict.update({key: back_model['model'][load_key]})
     #     model.load_state_dict(model_dict)
     # Add generator to model (this registers it as parameter of model).
-
+    model.generator = generator
+    model.bk_generator = bk_generator
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:
         model.cuda()
