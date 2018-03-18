@@ -432,8 +432,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
 
         self.mse = nn.MSELoss(reduce=False)
 
-    def forward(self, input, context, state, context_lengths=None, 
-                rev_input=None):
+    def forward(self, input, context, state, context_lengths=None):
         # Args Check
         assert isinstance(state, RNNDecoderState)
         input_len, input_batch, _ = input.size()
@@ -445,12 +444,12 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         context = self.context_mlp(context)
         if self.training:
             bk_rnn_output, _ = self._run_backward_pass(
-                rev_input, context, state)
-            self.bk_rnn_output = bk_rnn_output.detach()
-            # self.bk_rnn_output = bk_rnn_output
+                torch.cat([input[2:], input[:1]], 0), context, state)
+            # self.bk_rnn_output = bk_rnn_output.detach()
+            self.bk_rnn_output = bk_rnn_output
 
         hidden, outputs, attns, coverage = self._run_forward_pass(
-            input, context, state, context_lengths=context_lengths)
+            input[:-1], context, state, context_lengths=context_lengths)
 
         # Update the state with the result.
         final_output = outputs[-1]
@@ -498,8 +497,11 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         return hidden, outputs, attns, coverage
 
     def _run_backward_pass(self, input, context, state):
-        emb = self.embeddings(input)
-        
+        idx = np.arange(input.size(0))[::-1].tolist()
+        idx = torch.LongTensor(idx)
+        idx = Variable(idx).cuda()
+        x_bwd = input.index_select(0, idx)
+        emb = self.embeddings(x_bwd)
         rnn_output, hidden = self.bk_rnn(emb, state.hidden)
 
         attn_outputs, attn_scores = self.bk_attn(
@@ -507,6 +509,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             context.transpose(0, 1)                 # (contxt_len, batch, d)
         )                  
         outputs = self.dropout(attn_outputs)
+        outputs = outputs.index_select(0, idx)
         return outputs, hidden
 
     def _build_rnn(self, rnn_type, input_size,
@@ -527,9 +530,9 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             dropout=dropout)
     
     def l2_loss(self, mask, normalization, states):
-        # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[mask]
-        # loss = weight * torch.sum(loss)
-        loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
+        loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[mask]
+        loss = torch.sum(loss) / normalization
+        # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
         states.update_l2_loss(loss.cpu().data.numpy())
@@ -691,15 +694,14 @@ class NMTModel(nn.Module):
                  * dictionary attention dists of `[tgt_len x batch x src_len]`
                  * final decoder state
         """
-        tgt = tgt[:-1]  # exclude last target from inputs
+        # tgt = tgt[:-1]  # exclude last target from inputs
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.decoder.init_decoder_state(src, context, enc_hidden)
         if self.training:
             out, bk_out, dec_state, attns = self.decoder(tgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
-                                             context_lengths=lengths,
-                                             rev_input=rtgt[:-1] if rtgt is not None else None)
+                                             context_lengths=lengths)
             return out, bk_out, dec_state, attns
         else:
             out, dec_state, attns = self.decoder(tgt, context,

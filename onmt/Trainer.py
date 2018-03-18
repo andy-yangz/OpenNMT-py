@@ -299,22 +299,22 @@ class Trainer(object):
             else:
                 src_lengths = None
 
-            idx = np.arange(batch.tgt.size(0))[::-1].tolist()
-            idx = Variable(torch.LongTensor(idx)).cuda()
-            batch.rtgt = batch.tgt.index_select(0, idx)
+            # idx = np.arange(batch.tgt.size(0))[::-1].tolist()
+            # idx = Variable(torch.LongTensor(idx)).cuda()
+            # batch.rtgt = batch.tgt.index_select(0, idx)
             tgt_outer = onmt.io.make_features(batch, 'tgt')
-            rtgt_outer = onmt.io.make_features(batch, 'rtgt')
+            # rtgt_outer = onmt.io.make_features(batch, 'rtgt')
 
             for j in range(0, target_size-1, trunc_size):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
-                rtgt = rtgt_outer[j: j + trunc_size]
+                # rtgt = rtgt_outer[j: j + trunc_size]
                 mask = (tgt[:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
                 outputs, bk_outputs, attns, dec_state = \
-                    self.model(src, tgt, src_lengths, dec_state, rtgt)
+                    self.model(src, tgt, src_lengths, dec_state)
 
                 # 3. Compute loss in shards for memory efficiency.
                 self.model.decoder.l2_loss(mask, normalization, report_stats)
