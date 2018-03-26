@@ -422,8 +422,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                                         reuse_copy_attn)
         self.bk_rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
                             num_layers, dropout)
-        self.affine = nn.Linear(hidden_size, hidden_size)
-        self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
+        # self.affine = nn.Linear(hidden_size, hidden_size)
+        # self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
 
         self.bk_attn = onmt.modules.GlobalAttention(
             hidden_size, coverage=coverage_attn,
@@ -476,16 +476,14 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         # Run the forward pass of the RNN.
         if isinstance(self.rnn, nn.GRU):
             fd_rnn_output, hidden = self.rnn(emb, state.hidden[0])
-            pred_bk_rnn_output = self.affine(fd_rnn_output)
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
-            pred_bk_rnn_output = self.affine(fd_rnn_output)
-                # self.l2_loss(bk_rnn_output, pred_bk_rnn_output)
-        self.pred_bk_rnn_output = pred_bk_rnn_output
-        rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
+
+        self.fd_rnn_output = fd_rnn_output
+        # rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(
-            rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
+            fd_rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
             context.transpose(0, 1),                  # (contxt_len, batch, d)
             context_lengths=context_lengths
         )
@@ -529,7 +527,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             dropout=dropout)
     
     def l2_loss(self, mask, normalization, states):
-        loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[mask]
+        loss = torch.sum((self.bk_rnn_output - self.fd_rnn_output)**2.0, 2, keepdim=True)[mask]
         loss = 0.5 * torch.sum(loss) / normalization
         # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
