@@ -128,7 +128,10 @@ class Trainer(object):
         self.norm_method = norm_method
         self.grad_accum_count = grad_accum_count
         self.padding_idx = tgt_vocab.stoi[onmt.io.DatasetBase.PAD_WORD]
-
+        # print(list(tgt_vocab.stoi.items())[0:5])
+        # print(tgt_vocab.stoi[onmt.io.DatasetBase.EOS_WORD])
+        # print(tgt_vocab.stoi[onmt.io.DatasetBase.RBOS_WORD])
+    
         assert(grad_accum_count > 0)
         if grad_accum_count > 1:
             assert(self.trunc_size == 0), \
@@ -226,7 +229,6 @@ class Trainer(object):
                 src_lengths = None
 
             tgt = onmt.io.make_features(batch, 'tgt')
-
             # F-prop through the model.
             outputs, attns, _ = self.model(src, tgt, src_lengths)
 
@@ -260,14 +262,19 @@ class Trainer(object):
         real_generator = (real_model.generator.module
                           if isinstance(real_model.generator, nn.DataParallel)
                           else real_model.generator)
+        real_bk_generator = (real_model.bk_generator.module
+                          if isinstance(real_model.bk_generator, nn.DataParallel)
+                          else real_model.generator)
 
         model_state_dict = real_model.state_dict()
         model_state_dict = {k: v for k, v in model_state_dict.items()
                             if 'generator' not in k}
         generator_state_dict = real_generator.state_dict()
+        bk_generator_state_dict = real_bk_generator.state_dict()
         checkpoint = {
             'model': model_state_dict,
             'generator': generator_state_dict,
+            'bk_generator': bk_generator_state_dict,
             'vocab': onmt.io.save_fields_to_vocab(fields),
             'opt': opt,
             'epoch': epoch,
@@ -308,8 +315,10 @@ class Trainer(object):
             for j in range(0, target_size-1, trunc_size):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
+                # print(tgt)
+                # exit(0)
                 # rtgt = rtgt_outer[j: j + trunc_size]
-                mask = (tgt[:-1] != self.padding_idx)
+                mask = (tgt[:-2] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()

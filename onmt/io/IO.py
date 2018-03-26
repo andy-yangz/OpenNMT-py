@@ -7,7 +7,7 @@ import torch
 import torchtext.data
 import torchtext.vocab
 
-from onmt.io.DatasetBase import UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD
+from onmt.io.DatasetBase import UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD, RBOS_WORD
 from onmt.io.TextDataset import TextDataset
 from onmt.io.ImageDataset import ImageDataset
 from onmt.io.AudioDataset import AudioDataset
@@ -88,7 +88,7 @@ def merge_vocabs(vocabs, vocab_size=None):
     merged = sum([vocab.freqs for vocab in vocabs], Counter())
     return torchtext.vocab.Vocab(merged,
                                  specials=[UNK_WORD, PAD_WORD,
-                                           BOS_WORD, EOS_WORD],
+                                           BOS_WORD, EOS_WORD, RBOS_WORD],
                                  max_size=vocab_size)
 
 
@@ -220,10 +220,10 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_dir=None,
 def _build_field_vocab(field, counter, **kwargs):
     specials = list(OrderedDict.fromkeys(
         tok for tok in [field.unk_token, field.pad_token, field.init_token,
-                        field.eos_token]
+                        field.eos_token, field.rinit_token]
         if tok is not None))
     field.vocab = field.vocab_cls(counter, specials=specials, **kwargs)
-
+    # print(field.vocab.stoi)
 
 def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 src_vocab_size, src_words_min_frequency,
@@ -292,6 +292,7 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 vocab_size=src_vocab_size)
             fields["src"].vocab = merged_vocab
             fields["tgt"].vocab = merged_vocab
+            print(list(fields["src"].vocab.stoi.items())[0:10])
 
     return fields
 

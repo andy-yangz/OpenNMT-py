@@ -444,12 +444,12 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         context = self.context_mlp(context)
         if self.training:
             bk_rnn_output, _ = self._run_backward_pass(
-                torch.cat([input[2:], input[:1]], 0), context, state)
+                input[2:], context, state)
             # self.bk_rnn_output = bk_rnn_output.detach()
             self.bk_rnn_output = bk_rnn_output
 
         hidden, outputs, attns, coverage = self._run_forward_pass(
-            input[:-1], context, state, context_lengths=context_lengths)
+            input[:-2], context, state, context_lengths=context_lengths)
 
         # Update the state with the result.
         final_output = outputs[-1]
@@ -503,13 +503,12 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         x_bwd = input.index_select(0, idx)
         emb = self.embeddings(x_bwd)
         rnn_output, hidden = self.bk_rnn(emb, state.hidden)
-
+        rnn_output = rnn_output.index_select(0, idx)
         attn_outputs, attn_scores = self.bk_attn(
             rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
             context.transpose(0, 1)                 # (contxt_len, batch, d)
         )                  
         outputs = self.dropout(attn_outputs)
-        outputs = outputs.index_select(0, idx)
         return outputs, hidden
 
     def _build_rnn(self, rnn_type, input_size,
@@ -531,7 +530,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
     
     def l2_loss(self, mask, normalization, states):
         loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2.0, 2, keepdim=True)[mask]
-        loss = torch.sum(loss) / normalization
+        loss = 0.5 * torch.sum(loss) / normalization
         # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)

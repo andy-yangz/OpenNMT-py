@@ -182,7 +182,7 @@ class NMTLossCompute(LossComputeBase):
     def _make_shard_state(self, batch, output, range_, attns=None, back=False):
         return {
             "output": output,
-            "target": batch.tgt[range_[0] + 1: range_[1]],
+            "target": batch.tgt[range_[0] + 1: range_[1] - 1],
         }
 
     def _compute_loss(self, batch, output, target, back=False):
@@ -267,5 +267,6 @@ def shards(state, shard_size, eval=False):
         # Assumed backprop'd
         variables = ((state[k], v.grad.data) for k, v in non_none.items()
                      if isinstance(v, Variable) and v.grad is not None)
+        # print("Result:", *variables)
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads, retain_graph=True)

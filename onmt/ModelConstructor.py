@@ -215,19 +215,20 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
         print('Loading model parameters.')
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
+        bk_generator.load_state_dict(checkpoint['bk_generator'])
         # Fix the trained parts
-        for param in model.parameters():
-            param.requires_grad = False
+        # for param in model.parameters():
+        #     param.requires_grad = False
         # train_params = chain(model.generator.parameters(),
         #                      model.decoder.attn.parameters(),
         #                      model.decoder.context_mlp.parameters(),
         #                      model.decoder.affine.parameters())
-        for param in model.decoder.affine.parameters():
-            param.requires_grad = True
+        # for param in model.decoder.affine.parameters():
+        #     param.requires_grad = True
         
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                print(name)
+        # for name, param in model.named_parameters():
+        #     if param.requires_grad:
+        #         print(name)
     else:
         if model_opt.param_init != 0.0:
             print('Intializing model parameters.')

@@ -11,7 +11,8 @@ import torchtext
 
 from onmt.Utils import aeq
 from onmt.io.DatasetBase import (ONMTDatasetBase, UNK_WORD,
-                                 PAD_WORD, BOS_WORD, EOS_WORD)
+                                 PAD_WORD, BOS_WORD, EOS_WORD,
+                                 RBOS_WORD)
 
 
 class TextDataset(ONMTDatasetBase):
@@ -195,15 +196,14 @@ class TextDataset(ONMTDatasetBase):
         for j in range(n_src_features):
             fields["src_feat_"+str(j)] = \
                 torchtext.data.Field(pad_token=PAD_WORD)
-
         fields["tgt"] = torchtext.data.Field(
             init_token=BOS_WORD, eos_token=EOS_WORD,
-            pad_token=PAD_WORD)
+            rinit_token=RBOS_WORD, pad_token=PAD_WORD)
 
         for j in range(n_tgt_features):
             fields["tgt_feat_"+str(j)] = \
                 torchtext.data.Field(init_token=BOS_WORD, eos_token=EOS_WORD,
-                                     pad_token=PAD_WORD)
+                                     rinit_token=RBOS_WORD, pad_token=PAD_WORD)
 
         def make_src(data, vocab, is_train):
             src_size = max([t.size(0) for t in data])

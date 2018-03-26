@@ -9,6 +9,7 @@ UNK_WORD = '<unk>'
 UNK = 0
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
+RBOS_WORD = '<rs>'
 
 
 class ONMTDatasetBase(torchtext.data.Dataset):
