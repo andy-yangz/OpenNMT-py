@@ -422,7 +422,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                                         reuse_copy_attn)
         self.bk_rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
                             num_layers, dropout)
-        # self.affine = nn.Linear(hidden_size, hidden_size)
+        self.affine = nn.Linear(hidden_size, hidden_size)
         # self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
 
         self.bk_attn = onmt.modules.GlobalAttention(
@@ -445,8 +445,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         if self.training:
             bk_rnn_output, _ = self._run_backward_pass(
                 input[2:], context, state)
-            # self.bk_rnn_output = bk_rnn_output.detach()
-            self.bk_rnn_output = bk_rnn_output
+            self.bk_rnn_output = bk_rnn_output.detach()
+            # self.bk_rnn_output = bk_rnn_output
 
         hidden, outputs, attns, coverage = self._run_forward_pass(
             input[:-2], context, state, context_lengths=context_lengths)
@@ -479,7 +479,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
 
-        self.fd_rnn_output = fd_rnn_output
+        self.fd_affine_rnn_output = self.affine(fd_rnn_output)
         # rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(
@@ -527,8 +527,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             dropout=dropout)
     
     def l2_loss(self, mask, normalization, states):
-        loss = torch.sum((self.bk_rnn_output - self.fd_rnn_output)**2.0, 2, keepdim=True)[mask]
-        loss = 0.5 * torch.sum(loss) / normalization
+        loss = torch.sum((self.bk_rnn_output - self.fd_affine_rnn_output)**2.0, 2, keepdim=True)[mask]
+        loss = 0.1 * torch.sum(loss) / normalization
         # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
