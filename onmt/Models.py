@@ -432,7 +432,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
 
         self.mse = nn.MSELoss(reduce=False)
 
-    def forward(self, input, context, state, context_lengths=None):
+    def forward(self, input, context, state, context_lengths=None, r_input=None):
         # Args Check
         assert isinstance(state, RNNDecoderState)
         input_len, input_batch, _ = input.size()
@@ -443,13 +443,13 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         # Run the forward pass of the RNN.
         context = self.context_mlp(context)
         if self.training:
-            bk_rnn_output, _ = self._run_backward_pass(
-                input[2:], context, state)
+            bk_att_output, bk_rnn_output = self._run_backward_pass(
+                r_input, context, state)
             self.bk_rnn_output = bk_rnn_output.detach()
             # self.bk_rnn_output = bk_rnn_output
 
         hidden, outputs, attns, coverage = self._run_forward_pass(
-            input[:-2], context, state, context_lengths=context_lengths)
+            input, context, state, context_lengths=context_lengths)
 
         # Update the state with the result.
         final_output = outputs[-1]
@@ -462,7 +462,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         for k in attns:
             attns[k] = torch.stack(attns[k])
         if self.training:
-            return outputs, bk_rnn_output, state, attns
+            return outputs, bk_att_output, state, attns
         else:
             return outputs, state, attns
         
@@ -507,7 +507,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             context.transpose(0, 1)                 # (contxt_len, batch, d)
         )                  
         outputs = self.dropout(attn_outputs)
-        return outputs, hidden
+        return outputs, rnn_output
 
     def _build_rnn(self, rnn_type, input_size,
                    hidden_size, num_layers, dropout):
@@ -527,9 +527,9 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             dropout=dropout)
     
     def l2_loss(self, mask, normalization, states):
-        loss = torch.sum((self.bk_rnn_output - self.fd_affine_rnn_output)**2.0, 2, keepdim=True)[mask]
-        loss = 0.1 * torch.sum(loss) / normalization
-        # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
+        # loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
+        # loss = 10 * torch.sum(loss) / normalization
+        loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
         states.update_l2_loss(loss.cpu().data.numpy())
@@ -691,17 +691,19 @@ class NMTModel(nn.Module):
                  * dictionary attention dists of `[tgt_len x batch x src_len]`
                  * final decoder state
         """
-        # tgt = tgt[:-1]  # exclude last target from inputs
+        ftgt = tgt[:-1]  # exclude last target from inputs
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.decoder.init_decoder_state(src, context, enc_hidden)
         if self.training:
-            out, bk_out, dec_state, attns = self.decoder(tgt, context,
+            rtgt = tgt[1:]
+            out, bk_out, dec_state, attns = self.decoder(ftgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
-                                             context_lengths=lengths)
+                                             context_lengths=lengths,
+                                             r_input = rtgt)
             return out, bk_out, dec_state, attns
         else:
-            out, dec_state, attns = self.decoder(tgt, context,
+            out, dec_state, attns = self.decoder(ftgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
                                              context_lengths=lengths)

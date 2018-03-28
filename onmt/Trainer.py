@@ -318,7 +318,7 @@ class Trainer(object):
                 # print(tgt)
                 # exit(0)
                 # rtgt = rtgt_outer[j: j + trunc_size]
-                mask = (tgt[:-2] != self.padding_idx)
+                mask = (tgt[1:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
