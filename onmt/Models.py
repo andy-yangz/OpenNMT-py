@@ -527,9 +527,9 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             dropout=dropout)
     
     def l2_loss(self, mask, normalization, states):
-        # loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
-        # loss = 10 * torch.sum(loss) / normalization
-        loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2) / normalization
+        loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
+        loss = torch.sum(loss) / normalization
+        # loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
         states.update_l2_loss(loss.cpu().data.numpy())
