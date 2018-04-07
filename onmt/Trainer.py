@@ -264,7 +264,7 @@ class Trainer(object):
                           else real_model.generator)
         real_bk_generator = (real_model.bk_generator.module
                           if isinstance(real_model.bk_generator, nn.DataParallel)
-                          else real_model.generator)
+                          else real_model.bk_generator)
 
         model_state_dict = real_model.state_dict()
         model_state_dict = {k: v for k, v in model_state_dict.items()
