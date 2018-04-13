@@ -430,7 +430,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             attn_type=attn_type
         )
 
-        self.mse = nn.MSELoss(reduce=False)
+        # self.mse = nn.MSELoss(reduce=False)
 
     def forward(self, input, context, state, context_lengths=None, r_input=None):
         # Args Check
@@ -505,7 +505,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         attn_outputs, attn_scores = self.bk_attn(
             rnn_output.transpose(0, 1).contiguous(),  # (output_len, batch, d)
             context.transpose(0, 1)                 # (contxt_len, batch, d)
-        )                  
+        )
         outputs = self.dropout(attn_outputs)
         return outputs, rnn_output
 
@@ -528,8 +528,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
     
     def l2_loss(self, mask, normalization, states):
         loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
-        loss = torch.sum(loss) / normalization
-        # loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2) / normalization
+        loss = 0.3 * torch.sum(loss) / normalization
+        # loss = torch.sum  self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
         states.update_l2_loss(loss.cpu().data.numpy())
