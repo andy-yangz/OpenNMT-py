@@ -430,9 +430,9 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             attn_type=attn_type
         )
 
-        self.mse = nn.MSELoss(reduce=False)
+        # self.mse = nn.MSELoss(reduce=False)
 
-    def forward(self, input, context, state, context_lengths=None):
+    def forward(self, input, context, state, context_lengths=None, re_input=None):
         # Args Check
         assert isinstance(state, RNNDecoderState)
         input_len, input_batch, _ = input.size()
@@ -443,13 +443,13 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         # Run the forward pass of the RNN.
         context = self.context_mlp(context)
         if self.training:
-            bk_rnn_output, _ = self._run_backward_pass(
-                input[2:], context, state)
+            bk_rnn_output, rnn_states = self._run_backward_pass(
+                re_input, context, state)
             # self.bk_rnn_output = bk_rnn_output.detach()
-            self.bk_rnn_output = bk_rnn_output
+            self.rnn_states = rnn_states.detach()
 
         hidden, outputs, attns, coverage = self._run_forward_pass(
-            input[:-2], context, state, context_lengths=context_lengths)
+            input, context, state, context_lengths=context_lengths)
 
         # Update the state with the result.
         final_output = outputs[-1]
@@ -507,7 +507,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             context.transpose(0, 1)                 # (contxt_len, batch, d)
         )                  
         outputs = self.dropout(attn_outputs)
-        return outputs, hidden
+        return outputs, rnn_output
 
     def _build_rnn(self, rnn_type, input_size,
                    hidden_size, num_layers, dropout):
@@ -526,13 +526,13 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             num_layers=num_layers,
             dropout=dropout)
     
-    def l2_loss(self, mask, normalization, states):
-        loss = torch.sum((self.bk_rnn_output - self.fd_rnn_output)**2.0, 2, keepdim=True)[mask]
-        loss = 0.5 * torch.sum(loss) / normalization
+    def l2_loss(self, mask, normalization, states, weight):
+        loss = torch.sum((self.rnn_states[1:] - self.fd_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
+        loss = weight * torch.sum(loss) / normalization
         # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
-        states.update_l2_loss(loss.cpu().data.numpy())
+        states.update_l2_loss(loss.cpu().data.numpy(), weight)
         return loss
 
     @property
@@ -695,10 +695,13 @@ class NMTModel(nn.Module):
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.decoder.init_decoder_state(src, context, enc_hidden)
         if self.training:
-            out, bk_out, dec_state, attns = self.decoder(tgt, context,
+            ftgt = tgt[:-1]
+            btgt = tgt[1:]
+            out, bk_out, dec_state, attns = self.decoder(ftgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
-                                             context_lengths=lengths)
+                                             context_lengths=lengths,
+                                             re_input=btgt)
             return out, bk_out, dec_state, attns
         else:
             out, dec_state, attns = self.decoder(tgt, context,

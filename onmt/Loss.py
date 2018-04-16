@@ -180,9 +180,14 @@ class NMTLossCompute(LossComputeBase):
         self.bk_generator = bk_generator
 
     def _make_shard_state(self, batch, output, range_, attns=None, back=False):
+        if back:
+            return {
+                "output": output,
+                "target": batch.tgt[range_[0]: range_[1] - 1],
+            }   
         return {
             "output": output,
-            "target": batch.tgt[range_[0] + 1: range_[1] - 1],
+            "target": batch.tgt[range_[0] + 1: range_[1]],
         }
 
     def _compute_loss(self, batch, output, target, back=False):

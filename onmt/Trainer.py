@@ -38,13 +38,16 @@ class Statistics(object):
         self.start_time = time.time()
 
         self.l2_loss = 0
+        self.l2_weight = 0
+
     def update(self, stat):
         self.loss += stat.loss
         self.n_words += stat.n_words
         self.n_correct += stat.n_correct
 
-    def update_l2_loss(self, loss):
+    def update_l2_loss(self, loss, weight):
         self.l2_loss += loss
+        self.l2_weight = weight
 
     def accuracy(self):
         return 100 * (self.n_correct / self.n_words)
@@ -65,12 +68,13 @@ class Statistics(object):
            start (int): start time of epoch.
         """
         t = self.elapsed_time()
-        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; l2_l: %6.2f;" +
+        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; l2_l: %6.2f; l2_w: %6.2f;" +
                "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
               (epoch, batch,  n_batches,
                self.accuracy(),
                self.ppl(),
                self.l2_loss,
+               self.l2_weight,
                self.n_src_words / (t + 1e-5),
                self.n_words / (t + 1e-5),
                time.time() - start))
@@ -141,7 +145,7 @@ class Trainer(object):
         # Set model in training mode.
         self.model.train()
 
-    def train(self, train_iter, epoch, report_func=None):
+    def train(self, train_iter, epoch, loss_weight,report_func=None):
         """ Train next epoch.
         Args:
             train_iter: training data iterator
@@ -166,7 +170,6 @@ class Trainer(object):
         except NotImplementedError:
             # Dynamic batching
             num_batches = -1
-
         for i, batch in enumerate(train_iter):
             cur_dataset = train_iter.get_cur_dataset()
             self.train_loss.cur_dataset = cur_dataset
@@ -182,7 +185,9 @@ class Trainer(object):
             if accum == self.grad_accum_count:
                 self._gradient_accumulation(
                         true_batchs, total_stats,
-                        report_stats, back_report_stats, normalization)
+                        report_stats, back_report_stats, 
+                        normalization, loss_weight)
+                loss_weight += 0.00001
 
                 if report_func is not None:
                     report_stats = report_func(
@@ -205,7 +210,7 @@ class Trainer(object):
                     report_stats, normalization)
             true_batchs = []
 
-        return total_stats
+        return total_stats, loss_weight
 
     def validate(self, valid_iter):
         """ Validate model.
@@ -264,7 +269,7 @@ class Trainer(object):
                           else real_model.generator)
         real_bk_generator = (real_model.bk_generator.module
                           if isinstance(real_model.bk_generator, nn.DataParallel)
-                          else real_model.generator)
+                          else real_model.bk_generator)
 
         model_state_dict = real_model.state_dict()
         model_state_dict = {k: v for k, v in model_state_dict.items()
@@ -286,7 +291,8 @@ class Trainer(object):
                       valid_stats.ppl(), epoch))
 
     def _gradient_accumulation(self, true_batchs, total_stats,
-                               report_stats, back_stats, normalization):
+                               report_stats, back_stats, normalization,
+                               loss_weight):
         if self.grad_accum_count > 1:
             self.model.zero_grad()
 
@@ -318,7 +324,7 @@ class Trainer(object):
                 # print(tgt)
                 # exit(0)
                 # rtgt = rtgt_outer[j: j + trunc_size]
-                mask = (tgt[:-2] != self.padding_idx)
+                mask = (tgt[1:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
@@ -326,7 +332,7 @@ class Trainer(object):
                     self.model(src, tgt, src_lengths, dec_state)
 
                 # 3. Compute loss in shards for memory efficiency.
-                self.model.decoder.l2_loss(mask, normalization, report_stats)
+                self.model.decoder.l2_loss(mask, normalization, report_stats, loss_weight)
                 back_batch_stats = self.train_loss.sharded_compute_loss(
                         batch, bk_outputs, None, j,
                         trunc_size, self.shard_size, normalization, 
