@@ -74,7 +74,7 @@ def make_encoder(opt, embeddings):
                           opt.rnn_size, opt.dropout, embeddings)
 
 
-def make_decoder(opt, embeddings):
+def make_decoder(opt, embeddings, bk_embeddings):
     """
     Various decoder dispatcher function.
     Args:
@@ -109,7 +109,8 @@ def make_decoder(opt, embeddings):
                              opt.copy_attn,
                              opt.dropout,
                              embeddings,
-                             opt.reuse_copy_attn)
+                             opt.reuse_copy_attn,
+                             bk_embeddings)
     else:
         return StdRNNDecoder(opt.rnn_type, opt.brnn,
                              opt.dec_layers, opt.rnn_size,
@@ -179,6 +180,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
     feature_dicts = onmt.io.collect_feature_vocabs(fields, 'tgt')
     tgt_embeddings = make_embeddings(model_opt, tgt_dict,
                                      feature_dicts, for_encoder=False)
+    bk_tgt_embeddings = make_embeddings(model_opt, tgt_dict,
+                                     feature_dicts, for_encoder=False)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
@@ -188,8 +191,9 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
                                  'preprocess if you use share_embeddings!')
 
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
+        bk_tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
-    decoder = make_decoder(model_opt, tgt_embeddings)
+    decoder = make_decoder(model_opt, tgt_embeddings, bk_tgt_embeddings)
 
     # Make NMTModel(= encoder + decoder).
     model = NMTModel(encoder, decoder)
@@ -215,7 +219,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
         print('Loading model parameters.')
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
-        bk_generator.load_state_dict(checkpoint['bk_generator'])
+        # bk_generator.load_state_dict(checkpoint['bk_generator'])
         # Fix the trained parts
         # for param in model.parameters():
         #     param.requires_grad = False
@@ -255,7 +259,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
     #     model.load_state_dict(model_dict)
     # Add generator to model (this registers it as parameter of model).
     model.generator = generator
-    model.bk_generator = bk_generator
+    # model.bk_generator = bk_generator
+    # model.bk_generator = generator    
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:
         model.cuda()

@@ -155,8 +155,8 @@ class NMTLossCompute(LossComputeBase):
     """
     Standard NMT Loss Computation.
     """
-    def __init__(self, generator, bk_generator, tgt_vocab, normalization="sents",
-                 label_smoothing=0.0):
+    def __init__(self, generator, tgt_vocab, normalization="sents",
+                 label_smoothing=0.0, bk_generator=None):
         super(NMTLossCompute, self).__init__(generator, tgt_vocab)
         assert (label_smoothing >= 0.0 and label_smoothing <= 1.0)
 
@@ -194,7 +194,8 @@ class NMTLossCompute(LossComputeBase):
     def _compute_loss(self, batch, output, target, back=False):
         if back:
             # print('Back')
-            scores = self.bk_generator(self._bottle(output))
+            scores = self.generator(self._bottle(output))
+            # scores = self.bk_generator(self._bottle(output))
         else:
             # print('Normal')
             scores = self.generator(self._bottle(output))

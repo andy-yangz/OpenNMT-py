@@ -195,7 +195,7 @@ def make_loss_compute(model, tgt_vocab, opt):
             opt.copy_loss_by_seqlength)
     else:
         compute = onmt.Loss.NMTLossCompute(
-            model.generator, model.bk_generator, tgt_vocab,
+            model.generator, tgt_vocab,
             label_smoothing=opt.label_smoothing)
 
     if use_gpu(opt):
