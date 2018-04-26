@@ -68,7 +68,7 @@ class Statistics(object):
            start (int): start time of epoch.
         """
         t = self.elapsed_time()
-        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; l2_l: %6.2f; l2_w: %6.2f;" +
+        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; l2_l: %6.2f; l2_w: %f;" +
                "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
               (epoch, batch,  n_batches,
                self.accuracy(),
@@ -78,6 +78,7 @@ class Statistics(object):
                self.n_src_words / (t + 1e-5),
                self.n_words / (t + 1e-5),
                time.time() - start))
+        self.l2_loss = 0.0
         sys.stdout.flush()
 
     def log(self, prefix, experiment, lr):
@@ -145,7 +146,7 @@ class Trainer(object):
         # Set model in training mode.
         self.model.train()
 
-    def train(self, train_iter, epoch, loss_weight,report_func=None):
+    def train(self, train_iter, epoch, loss_weight, report_func=None):
         """ Train next epoch.
         Args:
             train_iter: training data iterator
@@ -187,7 +188,8 @@ class Trainer(object):
                         true_batchs, total_stats,
                         report_stats, back_report_stats, 
                         normalization, loss_weight)
-                loss_weight += 0.00001
+                if loss_weight <= 1:
+                        loss_weight += 0.0001
 
                 if report_func is not None:
                     report_stats = report_func(

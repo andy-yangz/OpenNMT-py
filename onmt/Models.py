@@ -414,7 +414,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                  hidden_size, attn_type="general",
                  coverage_attn=False, context_gate=None,
                  copy_attn=False, dropout=0.0, embeddings=None,
-                 reuse_copy_attn=False):
+                 reuse_copy_attn=False, bk_embeddings=None):
         super(MLPBiRNNDecoder, self).__init__(rnn_type, bidirectional_encoder, num_layers,
                                         hidden_size, attn_type,
                                         coverage_attn, context_gate,
@@ -422,7 +422,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                                         reuse_copy_attn)
         self.bk_rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
                             num_layers, dropout)
-        # self.affine = nn.Linear(hidden_size, hidden_size)
+        self.affine = nn.Linear(hidden_size, hidden_size)
         # self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
 
         self.bk_attn = onmt.modules.GlobalAttention(
@@ -430,6 +430,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             attn_type=attn_type
         )
 
+        self.bk_embeddings = bk_embeddings
         # self.mse = nn.MSELoss(reduce=False)
 
     def forward(self, input, context, state, context_lengths=None, re_input=None):
@@ -499,7 +500,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         idx = torch.LongTensor(idx)
         idx = Variable(idx).cuda()
         x_bwd = input.index_select(0, idx)
-        emb = self.embeddings(x_bwd)
+        emb = self.bk_embeddings(x_bwd)
         rnn_output, hidden = self.bk_rnn(emb, state.hidden)
         rnn_output = rnn_output.index_select(0, idx)
         attn_outputs, attn_scores = self.bk_attn(
@@ -528,7 +529,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
     
     def l2_loss(self, mask, normalization, states, weight):
         loss = torch.sum((self.rnn_states[1:] - self.fd_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
-        loss = weight * torch.sum(loss) / normalization
+        loss = torch.sum(loss) / normalization
+        weighted_loss = weight * loss
         # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
         loss.backward(retain_graph=True)
@@ -704,7 +706,8 @@ class NMTModel(nn.Module):
                                              re_input=btgt)
             return out, bk_out, dec_state, attns
         else:
-            out, dec_state, attns = self.decoder(tgt, context,
+            ftgt = tgt[:-1]
+            out, dec_state, attns = self.decoder(ftgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
                                              context_lengths=lengths)
