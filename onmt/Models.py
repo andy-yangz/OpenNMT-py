@@ -429,7 +429,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             hidden_size, coverage=coverage_attn,
             attn_type=attn_type
         )
-        self.bk_embeddings = bk_embeddings
+        # self.bk_embeddings = bk_embeddings
 
         # self.mse = nn.MSELoss(reduce=False)
 
@@ -500,7 +500,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         idx = torch.LongTensor(idx)
         idx = Variable(idx).cuda()
         x_bwd = input.index_select(0, idx)
-        emb = self.bk_embeddings(x_bwd)
+        emb = self.embeddings(x_bwd)
         rnn_output, hidden = self.bk_rnn(emb, state.hidden)
         rnn_output = rnn_output.index_select(0, idx)
         attn_outputs, attn_scores = self.bk_attn(
