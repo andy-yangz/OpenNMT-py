@@ -183,13 +183,12 @@ class NMTLossCompute(LossComputeBase):
         if back:
             return {
                 "output": output,
-                "target": batch.tgt[range_[0] : range_[1] - 1],
-            }
-        else:           
-            return {
-                "output": output,
-                "target": batch.tgt[range_[0] + 1 : range_[1]],
-            }
+                "target": batch.tgt[range_[0]: range_[1] - 1],
+            }   
+        return {
+            "output": output,
+            "target": batch.tgt[range_[0] + 1: range_[1]],
+        }
 
     def _compute_loss(self, batch, output, target, back=False):
         if back:

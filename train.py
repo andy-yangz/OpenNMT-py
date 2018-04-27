@@ -222,14 +222,14 @@ def train_model(model, fields, optim, data_type, model_opt):
     print(' * number of epochs: %d, starting from Epoch %d' %
           (opt.epochs + 1 - opt.start_epoch, opt.start_epoch))
     print(' * batch size: %d' % opt.batch_size)
-
+    loss_weight = 0.0
     for epoch in range(opt.start_epoch, opt.epochs + 1):
         print('')
 
         # 1. Train for one epoch on the training set.
         train_iter = make_dataset_iter(lazily_load_dataset("train"),
                                        fields, opt)
-        train_stats = trainer.train(train_iter, epoch, report_func)
+        train_stats, loss_weight = trainer.train(train_iter, epoch, loss_weight, report_func)
         print('Train perplexity: %g' % train_stats.ppl())
         print('Train accuracy: %g' % train_stats.accuracy())
 

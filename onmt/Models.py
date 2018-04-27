@@ -480,7 +480,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
 
-        self.fd_affine_rnn_output = self.affine(fd_rnn_output)
+        # self.fd_affine_rnn_output = self.affine(fd_rnn_output)
+        self.fd_affine_rnn_output = fd_rnn_output
         # rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(
@@ -527,13 +528,15 @@ class MLPBiRNNDecoder(RNNDecoderBase):
             num_layers=num_layers,
             dropout=dropout)
     
-    def l2_loss(self, mask, normalization, states):
+
+    def l2_loss(self, mask, normalization, states, weight):
         loss = torch.sum((self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2.0, 2, keepdim=True)[mask]
-        loss = 0.3 * torch.sum(loss) / normalization
-        # loss = torch.sum  self.bk_rnn_output[1:] - self.fd_affine_rnn_output[:-1])**2) / normalization
+        loss = torch.sum(loss) / normalization
+        weighted_loss = weight * loss
+        # loss = torch.sum((self.bk_rnn_output - self.pred_bk_rnn_output)**2) / normalization
         # loss = self.mse(self.bk_rnn_output, self.pred_bk_rnn_output)
-        loss.backward(retain_graph=True)
-        states.update_l2_loss(loss.cpu().data.numpy())
+        weighted_loss.backward(retain_graph=True)
+        states.update_l2_loss(loss.cpu().data.numpy(), weight)
         return loss
 
     @property
@@ -696,14 +699,16 @@ class NMTModel(nn.Module):
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.decoder.init_decoder_state(src, context, enc_hidden)
         if self.training:
-            rtgt = tgt[1:]
+            ftgt = tgt[:-1]
+            btgt = tgt[1:]
             out, bk_out, dec_state, attns = self.decoder(ftgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
                                              context_lengths=lengths,
-                                             r_input = rtgt)
+                                             r_input=btgt)
             return out, bk_out, dec_state, attns
         else:
+            ftgt = tgt[:-1]
             out, dec_state, attns = self.decoder(ftgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
