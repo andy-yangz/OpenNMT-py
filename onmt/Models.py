@@ -480,8 +480,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
 
-        # self.fd_affine_rnn_output = self.affine(fd_rnn_output)
-        self.fd_affine_rnn_output = fd_rnn_output
+        self.fd_affine_rnn_output = self.affine(fd_rnn_output)
+        # self.fd_affine_rnn_output = fd_rnn_output
         # rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(

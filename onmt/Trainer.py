@@ -188,8 +188,8 @@ class Trainer(object):
                         true_batchs, total_stats,
                         report_stats, back_report_stats, 
                         normalization, loss_weight)
-                if loss_weight <= 0.5:
-                        loss_weight += 0.00003
+                if loss_weight <= 0.3:
+                        loss_weight += 0.00001
 
                 if report_func is not None:
                     report_stats = report_func(
