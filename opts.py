@@ -117,6 +117,20 @@ def model_opts(parser):
     group.add_argument('-lambda_coverage', type=float, default=1,
                        help='Lambda value for coverage.')
 
+    # Sharing options
+    group.add_argument('-share_atten', action="store_true",
+                       help='Sharing attention components')
+    group.add_argument('-share_embed', action="store_true",
+                       help='Sharing embedding table')
+    group.add_argument('-share_gen', action="store_true",
+                       help="Sharing generator component")
+
+    # Regularization options
+    group.add_argument('-l2_direct', action="store_true",
+                       help='Use direct L2 norm regularization')
+    group.add_argument('-l2_affine', action="store_true",
+                       help='Use L2 norm regularization with affine layer')
+
 
 def preprocess_opts(parser):
     # Data options
