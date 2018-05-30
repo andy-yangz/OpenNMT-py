@@ -415,7 +415,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                  coverage_attn=False, context_gate=None,
                  copy_attn=False, dropout=0.0, embeddings=None,
                  reuse_copy_attn=False, bk_embeddings=None,
-                 share_embed=False, share_atten=False):
+                 share_embed=False, share_atten=False,
+                 l2_reg='none'):
         super(MLPBiRNNDecoder, self).__init__(rnn_type, bidirectional_encoder, num_layers,
                                         hidden_size, attn_type,
                                         coverage_attn, context_gate,
@@ -423,7 +424,10 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                                         reuse_copy_attn)
         self.bk_rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
                             num_layers, dropout)
-        self.affine = nn.Linear(hidden_size, hidden_size)
+        
+        self.l2_reg = l2_reg
+        if l2_reg == 'affine':
+            self.affine = nn.Linear(hidden_size, hidden_size)
         # self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
         
         if share_atten:
@@ -488,8 +492,10 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         else:
             fd_rnn_output, hidden = self.rnn(emb, state.hidden)
 
-        self.fd_affine_rnn_output = self.affine(fd_rnn_output)
-        # self.fd_affine_rnn_output = fd_rnn_output
+        if self.l2_reg == 'affine':
+            self.fd_affine_rnn_output = self.affine(fd_rnn_output)
+        elif self.l2_reg == 'direct':
+            self.fd_affine_rnn_output = fd_rnn_output
         # rnn_output = self.dec_mlp(torch.cat((fd_rnn_output, self.pred_bk_rnn_output), 2))
         # Calculate the attention.
         attn_outputs, attn_scores = self.attn(

@@ -112,7 +112,8 @@ def make_decoder(opt, embeddings, bk_embeddings=None):
                              opt.reuse_copy_attn,
                              bk_embeddings,
                              opt.share_embed,
-                             opt.share_atten)
+                             opt.share_atten,
+                             opt.l2_reg)
     else:
         return StdRNNDecoder(opt.rnn_type, opt.brnn,
                              opt.dec_layers, opt.rnn_size,
@@ -250,10 +251,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
     model.generator = generator
     if model_opt.share_gen:
         model.bk_generator = generator
-        print("share gen:", model.bk_generator == model.generator)
     else:
         model.bk_generator = bk_generator
-        print("share gen:", model.bk_generator == model.generator)            
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:
         model.cuda()

@@ -323,8 +323,6 @@ class Trainer(object):
             for j in range(0, target_size-1, trunc_size):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
-                # print(tgt)
-                # exit(0)
                 # rtgt = rtgt_outer[j: j + trunc_size]
                 mask = (tgt[1:-1] != self.padding_idx)
                 # 2. F-prop all but generator.
@@ -334,7 +332,9 @@ class Trainer(object):
                     self.model(src, tgt, src_lengths, dec_state)
 
                 # 3. Compute loss in shards for memory efficiency.
-                self.model.decoder.l2_loss(mask, normalization, report_stats, loss_weight)
+                if self.model.decoder.l2_reg != 'none':
+                    print("Use l2 reg")
+                    self.model.decoder.l2_loss(mask, normalization, report_stats, loss_weight)
                 back_batch_stats = self.train_loss.sharded_compute_loss(
                         batch, bk_outputs, None, j,
                         trunc_size, self.shard_size, normalization, 

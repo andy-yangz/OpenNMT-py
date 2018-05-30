@@ -126,11 +126,10 @@ def model_opts(parser):
                        help="Sharing generator component")
 
     # Regularization options
-    group.add_argument('-l2_direct', action="store_true",
-                       help='Use direct L2 norm regularization')
-    group.add_argument('-l2_affine', action="store_true",
-                       help='Use L2 norm regularization with affine layer')
-
+    group.add_argument('-l2_reg', type=str, default="none",
+                       choices=['none', 'direct', 'affine'],
+                       help="""Use L2 norm regularization, type:
+                        none or direct or affine""")
 
 def preprocess_opts(parser):
     # Data options
