@@ -193,8 +193,8 @@ class NMTLossCompute(LossComputeBase):
     def _compute_loss(self, batch, output, target, back=False):
         if back:
             # print('Back')
-            scores = self.generator(self._bottle(output))
-            # scores = self.bk_generator(self._bottle(output))
+            # scores = self.generator(self._bottle(output))
+            scores = self.bk_generator(self._bottle(output))
         else:
             # print('Normal')
             scores = self.generator(self._bottle(output))

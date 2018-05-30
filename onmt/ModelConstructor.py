@@ -110,7 +110,9 @@ def make_decoder(opt, embeddings, bk_embeddings=None):
                              opt.dropout,
                              embeddings,
                              opt.reuse_copy_attn,
-                             bk_embeddings)
+                             bk_embeddings,
+                             opt.share_embed,
+                             opt.share_atten)
     else:
         return StdRNNDecoder(opt.rnn_type, opt.brnn,
                              opt.dec_layers, opt.rnn_size,
@@ -220,19 +222,6 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
         # bk_generator.load_state_dict(checkpoint['bk_generator'])
-        # Fix the trained parts
-        # for param in model.parameters():
-        #     param.requires_grad = False
-        # train_params = chain(model.generator.parameters(),
-        #                      model.decoder.attn.parameters(),
-        #                      model.decoder.context_mlp.parameters(),
-        #                      model.decoder.affine.parameters())
-        # for param in model.decoder.affine.parameters():
-        #     param.requires_grad = True
-        
-        # for name, param in model.named_parameters():
-        #     if param.requires_grad:
-        #         print(name)
     else:
         if model_opt.param_init != 0.0:
             print('Intializing model parameters.')
@@ -259,8 +248,12 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, back_model=None):
     #     model.load_state_dict(model_dict)
     # Add generator to model (this registers it as parameter of model).
     model.generator = generator
-    # model.bk_generator = bk_generator
-    # model.bk_generator = generator    
+    if model_opt.share_gen:
+        model.bk_generator = generator
+        print("share gen:", model.bk_generator == model.generator)
+    else:
+        model.bk_generator = bk_generator
+        print("share gen:", model.bk_generator == model.generator)            
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:
         model.cuda()

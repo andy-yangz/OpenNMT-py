@@ -414,7 +414,8 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                  hidden_size, attn_type="general",
                  coverage_attn=False, context_gate=None,
                  copy_attn=False, dropout=0.0, embeddings=None,
-                 reuse_copy_attn=False, bk_embeddings=None):
+                 reuse_copy_attn=False, bk_embeddings=None,
+                 share_embed=False, share_atten=False):
         super(MLPBiRNNDecoder, self).__init__(rnn_type, bidirectional_encoder, num_layers,
                                         hidden_size, attn_type,
                                         coverage_attn, context_gate,
@@ -424,13 +425,20 @@ class MLPBiRNNDecoder(RNNDecoderBase):
                             num_layers, dropout)
         self.affine = nn.Linear(hidden_size, hidden_size)
         # self.dec_mlp = nn.Linear(hidden_size*2, hidden_size)
+        
+        if share_atten:
+            self.bk_attn = self.attn
+        else:
+            self.bk_attn = onmt.modules.GlobalAttention(
+                hidden_size, coverage=coverage_attn,
+                attn_type=attn_type
+            )
 
-        self.bk_attn = onmt.modules.GlobalAttention(
-            hidden_size, coverage=coverage_attn,
-            attn_type=attn_type
-        )
-        # self.bk_embeddings = bk_embeddings
-
+        if share_embed:
+            self.bk_embeddings = embeddings
+        else:
+            self.bk_embeddings = bk_embeddings
+        
         # self.mse = nn.MSELoss(reduce=False)
 
     def forward(self, input, context, state, context_lengths=None, r_input=None):
@@ -501,7 +509,7 @@ class MLPBiRNNDecoder(RNNDecoderBase):
         idx = torch.LongTensor(idx)
         idx = Variable(idx).cuda()
         x_bwd = input.index_select(0, idx)
-        emb = self.embeddings(x_bwd)
+        emb = self.bk_embeddings(x_bwd)
         rnn_output, hidden = self.bk_rnn(emb, state.hidden)
         rnn_output = rnn_output.index_select(0, idx)
         attn_outputs, attn_scores = self.bk_attn(
