@@ -1,137 +1,42 @@
-# OpenNMT-py: Open-Source Neural Machine Translation
+# Bidirectional Decoding for Neural Machine Translation
 
-[![Build Status](https://travis-ci.org/OpenNMT/OpenNMT-py.svg?branch=master)](https://travis-ci.org/OpenNMT/OpenNMT-py)
+This repository is built upon the [OpenNMT-py](https://github.com/OpenNMT/OpenNMT-py) code. The basic usage of this repository please go to check its document.
 
-This is a [Pytorch](https://github.com/pytorch/pytorch)
-port of [OpenNMT](https://github.com/OpenNMT/OpenNMT),
-an open-source (MIT) neural machine translation system. It is designed to be research friendly to try out new ideas in translation, summary, image-to-text, morphology, and many other domains.
+The intuition of this project is that  because of the property of the autoregressive decoding process of the sequential decoder, it normally translate in one direction. In this way, we think this kind of model have not make enough usage of bidirectional information of target language. So we proposed two ways to explore this kind of bidiretional information.
 
+#### Multi-task Learning
 
-OpenNMT-py is run as a collaborative open-source project. It is currently maintained by [Sasha Rush](http://github.com/srush) (Cambridge, MA), [Ben Peters](http://github.com/bpopeters) (Saarbrücken), and [Jianyu Zhan](http://github.com/jianyuzhan) (Shenzhen). The original code was written by [Adam Lerer](http://github.com/adamlerer) (NYC). Codebase is nearing a stable 0.1 version. We currently recommend forking if you want stable code.
+The first way we explore is Multi-task learning (MTL) way. In this method, we take forward and backward decoding as two tasks. 
 
-We love contributions. Please consult the Issues page for any [Contributions Welcome](https://github.com/OpenNMT/OpenNMT-py/issues?q=is%3Aissue+is%3Aopen+label%3A%22contributions+welcome%22) tagged post. 
+![](https://ws4.sinaimg.cn/large/0069RVTdgy1fv5npyswd8j31dy0hqdk0.jpg)
 
-<center style="padding: 40px"><img width="70%" src="http://opennmt.github.io/simple-attn.png" /></center>
+And later we jointly train them with sharing some components. Here, we share same encoder defaultly. We mainly share three components: attention, embedding, and generator.
 
+Then we can try to share single component or multiple component.  Such as:
 
-Table of Contents
-=================
-  * [Full Documentation](http://opennmt.net/OpenNMT-py/)
-  * [Requirements](#requirements)
-  * [Features](#features)
-  * [Quickstart](#quickstart)
-  * [Citation](#citation)
- 
-## Requirements
+![](https://ws4.sinaimg.cn/large/0069RVTdgy1fv5nvf895wj31960ms0yh.jpg)
 
-```bash
-pip install -r requirements.txt
-```
+Or share multiple:
 
+![](https://ws3.sinaimg.cn/large/0069RVTdgy1fv5nwv7rvrj31100eejue.jpg)
 
-## Features
+In the training phase, we assume the shared component learned backward information. So in the test phase, we throw the backward decoding component except shared componets, and predict target with forward decoding.
 
-The following OpenNMT features are implemented:
+Result show this model get improvement on WMT DE-EN task (on the full data we get +0.98 near 1 BLEU score improvement than base model) and ZH-EN task (only test on new commentary data because of limited resource, with +0.95 BLEU score improvement).
 
-- [data preprocessing](http://opennmt.net/OpenNMT-py/options/preprocess.html)
-- [Inference (translation) with batching and beam search](http://opennmt.net/OpenNMT-py/options/translate.html)
-- [Multiple source and target RNN (lstm/gru) types and attention (dotprod/mlp) types](http://opennmt.net/OpenNMT-py/options/train.html#model-encoder-decoder)
-- [TensorBoard/Crayon logging](http://opennmt.net/OpenNMT-py/options/train.html#logging)
-- [Source word features](http://opennmt.net/OpenNMT-py/options/train.html#model-embeddings)
-- [Pretrained Embeddings](http://opennmt.net/OpenNMT-py/FAQ.html#how-do-i-use-pretrained-embeddings-e-g-glove)
-- [Copy and Coverage Attention](http://opennmt.net/OpenNMT-py/options/train.html#model-attention)
-- [Image-to-text processing](http://opennmt.net/OpenNMT-py/im2text.html)
-- [Speech-to-text processing](http://opennmt.net/OpenNMT-py/speech2text.html)
+#### Regularization
 
-Beta Features (committed):
-- multi-GPU
-- ["Attention is all you need"](http://opennmt.net/OpenNMT-py/FAQ.html#how-do-i-use-the-transformer-model)
-- Structured attention
-- [Conv2Conv convolution model]
-- SRU "RNNs faster than CNN" paper
-- Inference time loss functions.
+This idea is quite simple. We enforce the forward and backward decoding RNN hidden states in same time step to close each other by regularization.
+
+![](https://ws2.sinaimg.cn/large/0069RVTdgy1fv5oaybnk7j30ri0cw414.jpg)
+
+Regulatization here can be various. We use two ways here. First, we just use L2 regularization directly. But this is too strict. Second, to add more flexibilty, we add two linear layer to both hidden states before do L2 regularization.
 
 ## Quickstart
 
-[Full Documentation](http://opennmt.net/OpenNMT-py/)
+You can enable above train options as below:
 
-
-### Step 1: Preprocess the data
-
-```bash
-python preprocess.py -train_src data/src-train.txt -train_tgt data/tgt-train.txt -valid_src data/src-val.txt -valid_tgt data/tgt-val.txt -save_data data/demo
-```
-
-We will be working with some example data in `data/` folder.
-
-The data consists of parallel source (`src`) and target (`tgt`) data containing one sentence per line with tokens separated by a space:
-
-* `src-train.txt`
-* `tgt-train.txt`
-* `src-val.txt`
-* `tgt-val.txt`
-
-Validation files are required and used to evaluate the convergence of the training. It usually contains no more than 5000 sentences.
-
-
-After running the preprocessing, the following files are generated:
-
-* `demo.train.pt`: serialized PyTorch file containing training data
-* `demo.valid.pt`: serialized PyTorch file containing validation data
-* `demo.vocab.pt`: serialized PyTorch file containing vocabulary data
-
-
-Internally the system never touches the words themselves, but uses these indices.
-
-### Step 2: Train the model
-
-```bash
-python train.py -data data/demo -save_model demo-model
-```
-
-The main train command is quite simple. Minimally it takes a data file
-and a save file.  This will run the default model, which consists of a
-2-layer LSTM with 500 hidden units on both the encoder/decoder. You
-can also add `-gpuid 1` to use (say) GPU 1.
-
-### Step 3: Translate
-
-```bash
-python translate.py -model demo-model_acc_XX.XX_ppl_XXX.XX_eX.pt -src data/src-test.txt -output pred.txt -replace_unk -verbose
-```
-
-Now you have a model which you can use to predict on new data. We do this by running beam search. This will output predictions into `pred.txt`.
-
-!!! note "Note"
-    The predictions are going to be quite terrible, as the demo dataset is small. Try running on some larger datasets! For example you can download millions of parallel sentences for [translation](http://www.statmt.org/wmt16/translation-task.html) or [summarization](https://github.com/harvardnlp/sent-summary).
-
-## Pretrained embeddings (e.g. GloVe)
-
-Go to tutorial: [How to use GloVe pre-trained embeddings in OpenNMT-py](http://forum.opennmt.net/t/how-to-use-glove-pre-trained-embeddings-in-opennmt-py/1011)
-
-## Pretrained Models
-
-The following pretrained models can be downloaded and used with translate.py (These were trained with an older version of the code; they will be updated soon).
-
-- [onmt_model_en_de_200k](https://drive.google.com/file/d/0B6N7tANPyVeBWE9WazRYaUd2QTg/view?usp=sharing): An English-German translation model based on the 200k sentence dataset at [OpenNMT/IntegrationTesting](https://github.com/OpenNMT/IntegrationTesting/tree/master/data). Perplexity: 20.
-- onmt_model_en_fr_b1M (coming soon): An English-French model trained on benchmark-1M. Perplexity: 4.85.
-
-
-## Citation
-
-[OpenNMT technical report](https://doi.org/10.18653/v1/P17-4012)
-
-```
-@inproceedings{opennmt,
-  author    = {Guillaume Klein and
-               Yoon Kim and
-               Yuntian Deng and
-               Jean Senellart and
-               Alexander M. Rush},
-  title     = {OpenNMT: Open-Source Toolkit for Neural Machine Translation},
-  booktitle = {Proc. ACL},
-  year      = {2017},
-  url       = {https://doi.org/10.18653/v1/P17-4012},
-  doi       = {10.18653/v1/P17-4012}
-}
-```
+- `-share_atten:` Expecify sharing attention component.
+- `-share_embed:` Expecify sharing word embedding component.
+- `-share_gen:` Expecify sharing generator component.
+- `-l2_reg:` Expecify L2 regularization, you choose between three options. `none`,`direct`, and `affine`.
